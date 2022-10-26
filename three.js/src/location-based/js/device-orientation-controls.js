@@ -20,7 +20,7 @@ class DeviceOrientationControls extends EventDispatcher {
   constructor(object) {
     super();
 
-    if (window.isSecureContext === false) {
+    if (window.isSecureContext === false && !window.cordova) {
       console.error(
         "THREE.DeviceOrientationControls: DeviceOrientationEvent is only available in secure contexts (https)"
       );
@@ -40,8 +40,10 @@ class DeviceOrientationControls extends EventDispatcher {
     this.screenOrientation = 0;
 
     this.alphaOffset = 0; // radians
-    this.landscapeAlphaOffset = -0.1; // radians
     this.calibrationComplete = false;
+
+    this.cordovaOrientationWatchId = null;
+    this.cordovaOrientationSettings = { frequency: 50 }; //ms
 
     this.offsetSamples = 0;
 
@@ -54,28 +56,10 @@ class DeviceOrientationControls extends EventDispatcher {
       // Initial calm-down/calibration of sensors
 
       if (scope.calibrationComplete === false && scope.offsetSamples < 8) {
-        if (
-          event.absolute !== true &&
-          +event.webkitCompassAccuracy > 0 &&
-          +event.webkitCompassAccuracy < 50
-        ) {
-          if (event.beta < 88 || event.beta > 92) {
-            console.log(
-              "calculated offset",
-              360 - (event.alpha - event.webkitCompassHeading)
-            );
-            console.log("event", event);
-            scope.alphaOffset = MathUtils.degToRad(
-              360 - (event.alpha - event.webkitCompassHeading)
-            );
-            scope.calibrationComplete = true;
-          }
-        } else {
-          //scope.calibrationComplete = true;
-        }
+        scope.offsetSamples++;
+        return;
       }
-      //scope.offsetSamples++;
-
+      scope.calibrationComplete = true;
       scope.deviceOrientation = event;
     };
 
@@ -104,8 +88,29 @@ class DeviceOrientationControls extends EventDispatcher {
     this.connect = function () {
       onScreenOrientationChangeEvent(); // run once on load
 
-      // iOS 13+
+      // Cordova
+      // https://github.com/spoxies/cordova-plugin-device-motion
+      if (
+        cordova &&
+        cordova.platformId &&
+        cordova.platformId == "ios" &&
+        window.navigator &&
+        window.navigator.accelerometer &&
+        window.navigator.accelerometer.watchAcceleration
+      ) {
+        this.alphaOffset = -1;
 
+        scope.cordovaOrientationWatchId =
+          window.navigator.accelerometer.watchAcceleration(
+            onDeviceOrientationChangeEvent,
+            console.log,
+            scope.cordovaOrientationSettings
+          );
+
+        scope.enabled = true;
+        return;
+      }
+      // iOS 13+
       if (
         window.DeviceOrientationEvent !== undefined &&
         typeof window.DeviceOrientationEvent.requestPermission === "function"
@@ -144,14 +149,18 @@ class DeviceOrientationControls extends EventDispatcher {
     };
 
     this.disconnect = function () {
-      window.removeEventListener(
-        "orientationchange",
-        onScreenOrientationChangeEvent
-      );
-      window.removeEventListener(
-        scope.orientationChangeEventName,
-        onDeviceOrientationChangeEvent
-      );
+      if (this.cordovaOrientationWatchId) {
+        navigator.accelerometer.clearWatch(this.cordovaOrientationWatchId);
+      } else {
+        window.removeEventListener(
+          "orientationchange",
+          onScreenOrientationChangeEvent
+        );
+        window.removeEventListener(
+          scope.orientationChangeEventName,
+          onDeviceOrientationChangeEvent
+        );
+      }
 
       scope.enabled = false;
     };
