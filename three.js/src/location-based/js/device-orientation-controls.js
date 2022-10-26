@@ -40,6 +40,10 @@ class DeviceOrientationControls extends EventDispatcher {
     this.screenOrientation = 0;
 
     this.alphaOffset = 0; // radians
+    this.landscapeAlphaOffset = -0.1; // radians
+    this.calibrationComplete = false;
+
+    this.offsetSamples = 0;
 
     this.orientationChangeEventName =
       "ondeviceorientationabsolute" in window
@@ -47,6 +51,31 @@ class DeviceOrientationControls extends EventDispatcher {
         : "deviceorientation";
 
     const onDeviceOrientationChangeEvent = function (event) {
+      // Initial calm-down/calibration of sensors
+
+      if (scope.calibrationComplete === false && scope.offsetSamples < 8) {
+        if (
+          event.absolute !== true &&
+          +event.webkitCompassAccuracy > 0 &&
+          +event.webkitCompassAccuracy < 50
+        ) {
+          if (event.beta < 88 || event.beta > 92) {
+            console.log(
+              "calculated offset",
+              360 - (event.alpha - event.webkitCompassHeading)
+            );
+            console.log("event", event);
+            scope.alphaOffset = MathUtils.degToRad(
+              360 - (event.alpha - event.webkitCompassHeading)
+            );
+            scope.calibrationComplete = true;
+          }
+        } else {
+          //scope.calibrationComplete = true;
+        }
+      }
+      //scope.offsetSamples++;
+
       scope.deviceOrientation = event;
     };
 
@@ -89,7 +118,7 @@ class DeviceOrientationControls extends EventDispatcher {
                 onScreenOrientationChangeEvent
               );
               window.addEventListener(
-                this.orientationChangeEventName,
+                scope.orientationChangeEventName,
                 onDeviceOrientationChangeEvent
               );
             }
@@ -106,7 +135,7 @@ class DeviceOrientationControls extends EventDispatcher {
           onScreenOrientationChangeEvent
         );
         window.addEventListener(
-          this.orientationChangeEventName,
+          scope.orientationChangeEventName,
           onDeviceOrientationChangeEvent
         );
       }
@@ -120,7 +149,7 @@ class DeviceOrientationControls extends EventDispatcher {
         onScreenOrientationChangeEvent
       );
       window.removeEventListener(
-        this.orientationChangeEventName,
+        scope.orientationChangeEventName,
         onDeviceOrientationChangeEvent
       );
 
@@ -128,20 +157,13 @@ class DeviceOrientationControls extends EventDispatcher {
     };
 
     this.update = function () {
-      if (scope.enabled === false) return;
+      if (scope.enabled === false || this.calibrationComplete === false) return;
 
       const device = scope.deviceOrientation;
 
       if (device) {
-        // iOS compass-calibrated 'alpha' patch
-        // see: http://lists.w3.org/Archives/Public/public-geolocation/2011Jul/0014.html
-        const heading = device.webkitCompassHeading || device.compassHeading;
-        
-        const alpha = device.alpha || heading
-          ? MathUtils.degToRad(
-              heading  
-              ? 360 - heading
-              : device.alpha || 0) + scope.alphaOffset
+        const alpha = device.alpha
+          ? MathUtils.degToRad(device.alpha) + scope.alphaOffset
           : 0; // Z
 
         const beta = device.beta ? MathUtils.degToRad(device.beta) : 0; // X'
