@@ -44,6 +44,7 @@ class DeviceOrientationControls extends EventDispatcher {
 
     this.cordovaOrientationWatchId = null;
     this.cordovaOrientationSettings = { frequency: 50 }; //ms
+    this.iosDegOffset = 90;
 
     this.offsetSamples = 0;
 
@@ -98,7 +99,7 @@ class DeviceOrientationControls extends EventDispatcher {
         window.navigator.accelerometer &&
         window.navigator.accelerometer.watchAcceleration
       ) {
-        this.alphaOffset = -1;
+        scope.alphaOffset = MathUtils.degToRad(scope.iosDegOffset);
 
         scope.cordovaOrientationWatchId =
           window.navigator.accelerometer.watchAcceleration(
